@@ -47,3 +47,13 @@ nip05er --help
 ```
 
 In case you're on Arch like myself, you'll need to `pacman -S python-psycopg2` to avoid errors about building dependencies from source.
+
+Here's hacky alias to quickly check results before copying them over:
+
+```bash
+alias up5="cat $HOME/src/nip05er/nostr.json | jq && echo 'Look good?' && read && cp -v src/nip05er/nostr.json /var/www/static/nostr.json"
+```
+
+todo:
+- if there's no event 0, the relay responds with `["EOSE","socket_id"]` and we need to handle that.
+- check for duplicate usernames
