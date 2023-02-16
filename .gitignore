@@ -1,0 +1,10 @@
+.venv
+.DS_Store/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+cache/
+db.env
+archive/
+*.json
