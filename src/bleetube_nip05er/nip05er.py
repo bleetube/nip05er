@@ -3,7 +3,8 @@ import click, psycopg2
 from pprint import pprint
 from binascii import hexlify
 from time import sleep, time
-from os import environ, getcwd, path
+from os import environ, getcwd, makedirs, path
+from sys import exit
 from asyncio import get_event_loop
 from websockets import connect
 
@@ -49,6 +50,8 @@ def get_users() -> list:
 async def local_nip05_search() -> dict:
     '''Searches the local relay for users with a configured nip-05 that matches our domain.'''
     users = get_users()
+    if not path.exists(f"{data_dir}/users"):
+        makedirs(f"{data_dir}/users")
     async with connect(f"wss://{relay_domain}") as websocket:
         # generate a random hex string
         subscription_id = hexlify(secrets.token_bytes(16)).decode('utf-8')
@@ -104,6 +107,48 @@ async def local_nip05_search() -> dict:
         await websocket.send(nostr_close)
     return local_nip05_users
 
+async def async_user_search(pubkey: str) -> None:
+    '''Searches the local relay for a single user. Mainly for debugging. Never caches.'''
+    async with connect(f"wss://{relay_domain}") as websocket:
+        # generate a random hex string
+        subscription_id = hexlify(secrets.token_bytes(16)).decode('utf-8')
+        nostr_close = json.dumps([ "CLOSE", subscription_id ])
+
+        user = {}
+        user['pubkey'] = pubkey
+        nostr_req = json.dumps([
+            "REQ",
+            subscription_id,
+            {
+                "authors": [user['pubkey']],
+                "limit":1,
+                "kinds":[0]
+            }
+        ])
+        try:
+            print(f"Attempting to get profile for {user['pubkey']}.")
+            print(nostr_req)
+            await websocket.send(nostr_req)
+            response = await websocket.recv()
+            event = json.loads(response)
+            pprint(event)
+#       except Exception as e:
+#           print(e)
+#           pass
+        except:
+            await websocket.send(nostr_close)
+            return
+
+    await websocket.send(nostr_close)
+    return event
+
+@click.command()
+@click.option('--pubkey', prompt='What 32-byte hex pubkey should we search for?', help='32-byte hex public key of the user to find.')
+def user_search(pubkey: str) -> None:
+    derp = get_event_loop().run_until_complete(async_user_search(pubkey))
+    pprint(derp)
+    return
+
 @click.command()
 def create_nip05_json() -> None:
     local_nip05_users = get_event_loop().run_until_complete(local_nip05_search())
@@ -132,3 +177,4 @@ def create_nip05_json() -> None:
     return
 
 cli.add_command(create_nip05_json)
+cli.add_command(user_search)

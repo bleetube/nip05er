@@ -25,10 +25,10 @@ export RELAY_ADMIN=blee
 
 ## running
 
-Use `--help` to see the console documentation. Otherwise you can just call the entry point and it should write `nostr.json` as well as print the results:
-
 ```bash
-nip05er
+nip05er --help
+nip05er user-search --pubkey 69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d
+nip05er create-nip05-json
 ```
 
 ## Development
