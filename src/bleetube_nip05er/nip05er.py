@@ -1,7 +1,7 @@
 import asyncio, json, re, secrets
 import click, psycopg2, websockets
 from pprint import pprint
-from binascii import hexlify
+#from binascii import hexlify
 from time import sleep, time
 from os import environ, getcwd, makedirs, path
 from sys import exit
@@ -11,8 +11,6 @@ from sys import exit
 data_dir = environ.get('DATA_DIR', getcwd())
 relay_domain = environ.get('RELAY_DOMAIN', 'bitcoiner.social')
 relay_admin = environ.get('RELAY_ADMIN', 'blee')
-#cache_age_sec = int(environ.get('CACHE_AGE_SECONDS', 86400))
-cache_age_sec = int(environ.get('CACHE_AGE_SECONDS', 1))
 nip05_reserved = [ '_', relay_admin ]
 
 @click.group()
@@ -24,8 +22,8 @@ def is_valid_nip05(nip05: str) -> bool:
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, nip05) is not None
 
-def get_users() -> list:
-    '''Get paid user pubkeys.'''
+def get_all_user_profiles() -> list:
+    '''Query postgresql to get paid user profiles.'''
     conn = psycopg2.connect(
         host=environ.get("DB_HOST"),
         database=environ.get("DB_NAME"),
@@ -34,184 +32,46 @@ def get_users() -> list:
     )
 
     cur = conn.cursor()
-    cur.execute("SELECT pubkey FROM users WHERE is_admitted is true")
-    user_results = cur.fetchall()
-    cur.close()
-    conn.close()
+    # get all kind 0 events, which are user profiles, only for admitted users
+    cur.execute("select encode(event_pubkey, 'hex') as pubkey, event_content from events where event_kind=0 and event_pubkey in (select pubkey FROM users WHERE is_admitted is true);")
+    profile_results = cur.fetchall()
 
-    users = []
-    for result in user_results:
-        user= {}
-        user['pubkey'] = hexlify(result[0]).decode('utf-8')
-        users.append(user)
+    # construct a list of all user profiles
+    profiles = []
+    for result in profile_results:
+        profile = json.loads(result[1])
+        profile['pubkey'] = result[0]
+        profiles.append(profile)
 
-    print(f"Found {len(users)} users.")
-    return users
+    print(f"Found {len(profiles)} user profiles.")
+    return profiles
 
-@click.command()
-def save_users() -> None:
-    '''Save paid user pubkeys to a file.'''
-    users = get_users()
-    with open(f"{data_dir}/users.json", 'w') as file:
-        file.write(json.dumps(users))
-
-def load_users() -> list:
-    '''Load paid user pubkeys from a file.'''
-    with open(f"{data_dir}/users.json", 'r') as file:
-        users = json.load(file)
-    return users
-
-async def local_nip05_search() -> dict:
-    '''Searches the local relay for users with a configured nip-05 that matches our domain.'''
-#   users = get_users()
-    users = load_users()
-    if not path.exists(f"{data_dir}/users"):
-        makedirs(f"{data_dir}/users")
-    async with websockets.connect(f"wss://{relay_domain}", timeout=3) as websocket:
-        subscription_id = secrets.token_urlsafe()
-        close_subscription = json.dumps([ "CLOSE", subscription_id ])
-        local_nip05_users = {}
-
-        for user in users:
-            event = None
-            user_cache = f"{data_dir}/users/{user['pubkey']}.json"
-            # Check local cache before querying the relay
-            if path.exists(user_cache) and time() - path.getmtime(user_cache) < cache_age_sec:
-                with open(user_cache, 'r') as file:
-                    event = json.load(file)
-                    print(f"Loaded {event[0]} for {user['pubkey']}.", end=' ')
-            else:
-                nostr_request = json.dumps([
-                    "REQ",
-                    subscription_id,
-                    {
-                        "authors": [user['pubkey']],
-                        "limit":1,
-                        "kinds":[0]
-                    }
-                ])
-                max_retries = 10
-                while max_retries > 0:
-                    max_retries -= 1
-                    try:
-                        await websocket.send(nostr_request)
-                        response = await asyncio.wait_for(websocket.recv(), timeout=5)
-                        event = json.loads(response)
-                        with open(user_cache, 'w') as file:
-                            print(f"Relay returned {event[0]} for {user['pubkey']}", end=' ')
-                            file.write(json.dumps(event))
-                        asyncio.sleep(0.25)
-                        break
-                    except asyncio.exceptions.TimeoutError:
-                        print('Timed out while waiting for a response, trying again..')
-                    except Exception as e:
-                        print(e)
-                        print(f"Socket died, returning {len(local_nip05_users)} NIP05s.")
-                        return local_nip05_users
-            if event[0] == "EVENT":
-                print(event)
-                pubkey = event[2].get("pubkey")
-                if pubkey and pubkey != user['pubkey']:
-                    print(f"Consistency error: Pubkey {pubkey}")
-                    break
-                profile = json.loads(event[2].get("content"))
-                if not profile:
-                    print(event)
-                    continue
-                if not profile.get("nip05"):
-                    pprint(profile)
-                    continue
-
-                nostr_identifier = profile.get("nip05")
-                print(nostr_identifier, end=' ')
-                if is_valid_nip05(nostr_identifier) and nostr_identifier.endswith(f"@{relay_domain}"):
-                    nip05_user = nostr_identifier.split("@")[0]
-                    if nip05_user in nip05_reserved:
-                        print("NOTICE: Reserved nip-05.")
-                        continue
-                    # debugging
-#                   if nip05_user == 'testing':
-#                       return local_nip05_users
-                    local_nip05_users.update({ nip05_user: user['pubkey'] })
-            try:
-                profile_pubkey = json.loads(event[2].get("pubkey"))
-                if profile_pubkey != user['pubkey']:
-                    print(f"Consistency error: Pubkey {user['pubkey']}", end=' ')
-            except:
-                pass
-            print('')
-
-        await websocket.send(close_subscription)
-    return local_nip05_users
-
-async def async_user_search(pubkey: str) -> None:
-    '''Searches the local relay for a single user. Mainly for debugging. Never caches.'''
-    async with websockets.connect(f"wss://{relay_domain}", timeout=3) as websocket:
-        # generate a random hex string
-        subscription_id = hexlify(secrets.token_bytes(16)).decode('utf-8')
-        close_subscription = json.dumps([ "CLOSE", subscription_id ])
-
-        user = {}
-        user['pubkey'] = pubkey
-        nostr_request = json.dumps([
-            "REQ",
-            subscription_id,
-            {
-                "authors": [user['pubkey']],
-                "limit":1,
-                "kinds":[0]
-            }
-        ])
-        max_retries = 5
-        while max_retries > 0:
-            max_retries -= 1
-            try:
-    #           print(f"Attempting to get profile for {user['pubkey']}.")
-    #           print(nostr_req)
-                await websocket.send(nostr_request)
-    #           print('sent request')
-                response = await asyncio.wait_for(websocket.recv(), timeout=2)
-    #           print('Got response')
-                event = json.loads(response)
-    #           print('Loaded response')
-                if event[0] == "EVENT":
-                    await websocket.send(close_subscription)
-                    pprint(event)
-                    return event
-                elif event[0] == "EOSE":
-                    print("No profile found.")
-                else:
-                    pprint(event)
-                break
-            except asyncio.exceptions.TimeoutError:
-                print('Timed out while waiting for a response, trying again..')
-            except Exception as e:
-                print(e)
-    return
-
-@click.command()
-@click.option('--pubkey', prompt='What 32-byte hex pubkey should we search for?', help='32-byte hex public key of the user to find.')
-def user_search(pubkey: str) -> None:
-    asyncio.run(async_user_search(pubkey))
-#   asyncio.get_event_loop().run_until_complete(async_user_search(pubkey))
-#   derp = get_event_loop().run_until_complete(async_user_search(pubkey))
-#   pprint(derp)
-    return
+# super important: it's pronounced "nip-oh-five-ers"
+def get_nip05ers() -> dict:
+    nip05ers = {}
+    for profile in get_all_user_profiles():
+        nostr_identifier = profile.get("nip05")
+        if nostr_identifier and is_valid_nip05(nostr_identifier) and nostr_identifier.endswith(f"@{relay_domain}"):
+            print(f"INTERNAL NIP-05: {nostr_identifier}")
+            nip05_user = nostr_identifier.split("@")[0]
+            if nip05_user in nip05_reserved:
+                continue
+            nip05er = { nip05_user: profile.get('pubkey') }
+            nip05ers.update(nip05er)
+    return nip05ers
 
 @click.command()
 def create_nip05_json() -> None:
     # https://websockets.readthedocs.io/en/stable/
-#   local_nip05_users = get_event_loop().run_until_complete(local_nip05_search())
-    local_nip05_users = asyncio.run(local_nip05_search())
 
-    admin_nip05 = { 
-        'blee': '69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d',
-        "_": "111f214dd63c679aa34b102efe774a815594b8271469c6dbe155fc52af872794"
+    nip05ers = { 
+        "_": "111f214dd63c679aa34b102efe774a815594b8271469c6dbe155fc52af872794",
+        'blee': '69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d'
     }
-    local_nip05_users.update(admin_nip05)
+    nip05ers.update(get_nip05ers())
 
     nip05_json = {
-        "names": local_nip05_users,
+        "names": nip05ers,
         "relays": {
             "69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d": [
             "wss://bitcoiner.social"
@@ -228,5 +88,3 @@ def create_nip05_json() -> None:
     return
 
 cli.add_command(create_nip05_json)
-cli.add_command(user_search)
-cli.add_command(save_users)
