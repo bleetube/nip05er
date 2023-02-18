@@ -1,17 +1,18 @@
-import json, re, secrets
-import click, psycopg2
+import asyncio, json, re, secrets
+import click, psycopg2, websockets
 from pprint import pprint
 from binascii import hexlify
 from time import sleep, time
 from os import environ, getcwd, makedirs, path
 from sys import exit
-from asyncio import get_event_loop
-from websockets import connect
+#from asyncio import get_event_loop
+#from websockets import connect, exceptions
 
 data_dir = environ.get('DATA_DIR', getcwd())
 relay_domain = environ.get('RELAY_DOMAIN', 'bitcoiner.social')
 relay_admin = environ.get('RELAY_ADMIN', 'blee')
-cache_age_sec = int(environ.get('CACHE_AGE_SECONDS', 86400))
+#cache_age_sec = int(environ.get('CACHE_AGE_SECONDS', 86400))
+cache_age_sec = int(environ.get('CACHE_AGE_SECONDS', 1))
 nip05_reserved = [ '_', relay_admin ]
 
 @click.group()
@@ -47,26 +48,40 @@ def get_users() -> list:
     print(f"Found {len(users)} users.")
     return users
 
+@click.command()
+def save_users() -> None:
+    '''Save paid user pubkeys to a file.'''
+    users = get_users()
+    with open(f"{data_dir}/users.json", 'w') as file:
+        file.write(json.dumps(users))
+
+def load_users() -> list:
+    '''Load paid user pubkeys from a file.'''
+    with open(f"{data_dir}/users.json", 'r') as file:
+        users = json.load(file)
+    return users
+
 async def local_nip05_search() -> dict:
     '''Searches the local relay for users with a configured nip-05 that matches our domain.'''
-    users = get_users()
+#   users = get_users()
+    users = load_users()
     if not path.exists(f"{data_dir}/users"):
         makedirs(f"{data_dir}/users")
-    async with connect(f"wss://{relay_domain}") as websocket:
-        # generate a random hex string
-        subscription_id = hexlify(secrets.token_bytes(16)).decode('utf-8')
-        nostr_close = json.dumps([ "CLOSE", subscription_id ])
-
+    async with websockets.connect(f"wss://{relay_domain}", timeout=3) as websocket:
+        subscription_id = secrets.token_urlsafe()
+        close_subscription = json.dumps([ "CLOSE", subscription_id ])
         local_nip05_users = {}
+
         for user in users:
-            # Check local cache before querying the relay
+            event = None
             user_cache = f"{data_dir}/users/{user['pubkey']}.json"
+            # Check local cache before querying the relay
             if path.exists(user_cache) and time() - path.getmtime(user_cache) < cache_age_sec:
-#               print(f"Using cached data for {user['pubkey']}.")
                 with open(user_cache, 'r') as file:
                     event = json.load(file)
+                    print(f"Loaded {event[0]} for {user['pubkey']}.", end=' ')
             else:
-                nostr_req = json.dumps([
+                nostr_request = json.dumps([
                     "REQ",
                     subscription_id,
                     {
@@ -75,48 +90,70 @@ async def local_nip05_search() -> dict:
                         "kinds":[0]
                     }
                 ])
-                try:
-                    print(f"Attempting to get profile for {user['pubkey']}.")
-                    await websocket.send(nostr_req)
-                    response = await websocket.recv()
-                    event = json.loads(response)
-                    with open(user_cache, 'w') as file:
-                        print(f"Writing cached data for {user['pubkey']}.")
-                        file.write(json.dumps(event))
-                    sleep(1)
-                except:
-                    print(f"Socket died, returning {len(local_nip05_users)} NIP05s.")
-                    return local_nip05_users
-            try:
+                max_retries = 10
+                while max_retries > 0:
+                    max_retries -= 1
+                    try:
+                        await websocket.send(nostr_request)
+                        response = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event = json.loads(response)
+                        with open(user_cache, 'w') as file:
+                            print(f"Relay returned {event[0]} for {user['pubkey']}", end=' ')
+                            file.write(json.dumps(event))
+                        asyncio.sleep(0.25)
+                        break
+                    except asyncio.exceptions.TimeoutError:
+                        print('Timed out while waiting for a response, trying again..')
+                    except Exception as e:
+                        print(e)
+                        print(f"Socket died, returning {len(local_nip05_users)} NIP05s.")
+                        return local_nip05_users
+            if event[0] == "EVENT":
+                print(event)
+                pubkey = event[2].get("pubkey")
+                if pubkey and pubkey != user['pubkey']:
+                    print(f"Consistency error: Pubkey {pubkey}")
+                    break
                 profile = json.loads(event[2].get("content"))
+                if not profile:
+                    print(event)
+                    continue
+                if not profile.get("nip05"):
+                    pprint(profile)
+                    continue
+
                 nostr_identifier = profile.get("nip05")
+                print(nostr_identifier, end=' ')
                 if is_valid_nip05(nostr_identifier) and nostr_identifier.endswith(f"@{relay_domain}"):
                     nip05_user = nostr_identifier.split("@")[0]
                     if nip05_user in nip05_reserved:
-                        print(f"NOTICE: Reserved nip-05: {nostr_identifier} with pubkey {user['pubkey']}")
+                        print("NOTICE: Reserved nip-05.")
                         continue
-# TODO: test for duplicates
-#                   if nip05_user in local_nip05_users.keys():
-#                       print(f"WARNING: Duplicate NIP05 detected: {nostr_identifier}")
-#                       continue
+                    # debugging
+#                   if nip05_user == 'testing':
+#                       return local_nip05_users
                     local_nip05_users.update({ nip05_user: user['pubkey'] })
+            try:
+                profile_pubkey = json.loads(event[2].get("pubkey"))
+                if profile_pubkey != user['pubkey']:
+                    print(f"Consistency error: Pubkey {user['pubkey']}", end=' ')
             except:
-#               print(f"User doesn't have a NIP05: {user['pubkey']}")
                 pass
+            print('')
 
-        await websocket.send(nostr_close)
+        await websocket.send(close_subscription)
     return local_nip05_users
 
 async def async_user_search(pubkey: str) -> None:
     '''Searches the local relay for a single user. Mainly for debugging. Never caches.'''
-    async with connect(f"wss://{relay_domain}") as websocket:
+    async with websockets.connect(f"wss://{relay_domain}", timeout=3) as websocket:
         # generate a random hex string
         subscription_id = hexlify(secrets.token_bytes(16)).decode('utf-8')
-        nostr_close = json.dumps([ "CLOSE", subscription_id ])
+        close_subscription = json.dumps([ "CLOSE", subscription_id ])
 
         user = {}
         user['pubkey'] = pubkey
-        nostr_req = json.dumps([
+        nostr_request = json.dumps([
             "REQ",
             subscription_id,
             {
@@ -125,33 +162,47 @@ async def async_user_search(pubkey: str) -> None:
                 "kinds":[0]
             }
         ])
-        try:
-            print(f"Attempting to get profile for {user['pubkey']}.")
-            print(nostr_req)
-            await websocket.send(nostr_req)
-            response = await websocket.recv()
-            event = json.loads(response)
-            pprint(event)
-#       except Exception as e:
-#           print(e)
-#           pass
-        except:
-            await websocket.send(nostr_close)
-            return
-
-    await websocket.send(nostr_close)
-    return event
+        max_retries = 5
+        while max_retries > 0:
+            max_retries -= 1
+            try:
+    #           print(f"Attempting to get profile for {user['pubkey']}.")
+    #           print(nostr_req)
+                await websocket.send(nostr_request)
+    #           print('sent request')
+                response = await asyncio.wait_for(websocket.recv(), timeout=2)
+    #           print('Got response')
+                event = json.loads(response)
+    #           print('Loaded response')
+                if event[0] == "EVENT":
+                    await websocket.send(close_subscription)
+                    pprint(event)
+                    return event
+                elif event[0] == "EOSE":
+                    print("No profile found.")
+                else:
+                    pprint(event)
+                break
+            except asyncio.exceptions.TimeoutError:
+                print('Timed out while waiting for a response, trying again..')
+            except Exception as e:
+                print(e)
+    return
 
 @click.command()
 @click.option('--pubkey', prompt='What 32-byte hex pubkey should we search for?', help='32-byte hex public key of the user to find.')
 def user_search(pubkey: str) -> None:
-    derp = get_event_loop().run_until_complete(async_user_search(pubkey))
-    pprint(derp)
+    asyncio.run(async_user_search(pubkey))
+#   asyncio.get_event_loop().run_until_complete(async_user_search(pubkey))
+#   derp = get_event_loop().run_until_complete(async_user_search(pubkey))
+#   pprint(derp)
     return
 
 @click.command()
 def create_nip05_json() -> None:
-    local_nip05_users = get_event_loop().run_until_complete(local_nip05_search())
+    # https://websockets.readthedocs.io/en/stable/
+#   local_nip05_users = get_event_loop().run_until_complete(local_nip05_search())
+    local_nip05_users = asyncio.run(local_nip05_search())
 
     admin_nip05 = { 
         'blee': '69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d',
@@ -178,3 +229,4 @@ def create_nip05_json() -> None:
 
 cli.add_command(create_nip05_json)
 cli.add_command(user_search)
+cli.add_command(save_users)
