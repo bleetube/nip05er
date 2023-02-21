@@ -59,3 +59,4 @@ alias up5="cat $HOME/src/nip05er/nostr.json | jq && echo 'Look good?' && read &&
 todo:
 
 - store registered names in a simple database (flat file probably) to prevent duplicate name registrations.
+- we should also check external relays because the client isn't guaranteed to have broadcast the profile to our local relay.

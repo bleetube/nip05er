@@ -48,7 +48,7 @@ def get_nip05ers() -> dict:
     nip05ers = {}
     for profile in get_all_user_profiles():
         nostr_identifier = profile.get("nip05")
-        if nostr_identifier and is_valid_nip05(nostr_identifier) and nostr_identifier.endswith(f"@{relay_domain}"):
+        if nostr_identifier and is_valid_nip05(nostr_identifier) and nostr_identifier.lower().endswith(f"@{relay_domain}"):
             print(f"INTERNAL NIP-05: {nostr_identifier}")
             nip05_user = nostr_identifier.split("@")[0]
             if nip05_user in nip05_reserved:
@@ -63,7 +63,8 @@ def create_nip05_json() -> None:
 
     nip05ers = { 
         "_": "111f214dd63c679aa34b102efe774a815594b8271469c6dbe155fc52af872794",
-        'blee': '69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d'
+        'blee': '69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d',
+        "ToxiKat27": "12cfc2ec5a39a39d02f921f77e701dbc175b6287f22ddf0247af39706967f1d9",
     }
     nip05ers.update(get_nip05ers())
 
