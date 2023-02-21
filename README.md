@@ -2,6 +2,8 @@
 
 High five users by adding them to `nostr.json` which is used to validate their nip05 address if it matches `user@your.domain`.
 
+Best of all, this works withou any necessary web-interface. The user is never required to fill out a separate form. All they do is set up their nip-05 the way they want to, in the app of their choice. The script will record which users registered a name and ensure the user keeps that name. All of the concerns about the UX remain in the nostr client and there is no additional fees for shorter names. It's a first come first serve basis.
+
 ## installation
 
 ```bash
@@ -55,5 +57,5 @@ alias up5="cat $HOME/src/nip05er/nostr.json | jq && echo 'Look good?' && read &&
 ```
 
 todo:
-- if there's no event 0, the relay responds with `["EOSE","socket_id"]` and we need to handle that.
-- check for duplicate usernames
+
+- store registered names in a simple database (flat file probably) to prevent duplicate name registrations.

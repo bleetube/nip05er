@@ -1,12 +1,9 @@
-import asyncio, json, re, secrets
-import click, psycopg2, websockets
+import json, re
+import click, psycopg2
 from pprint import pprint
 #from binascii import hexlify
 from time import sleep, time
-from os import environ, getcwd, makedirs, path
-from sys import exit
-#from asyncio import get_event_loop
-#from websockets import connect, exceptions
+from os import environ, getcwd
 
 data_dir = environ.get('DATA_DIR', getcwd())
 relay_domain = environ.get('RELAY_DOMAIN', 'bitcoiner.social')
