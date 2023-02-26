@@ -2,7 +2,9 @@
 
 High five users by adding them to `nostr.json` which is used to validate their nip05 address if it matches `user@your.domain`.
 
-Best of all, this works withou any necessary web-interface. The user is never required to fill out a separate form. All they do is set up their nip-05 the way they want to, in the app of their choice. The script will record which users registered a name and ensure the user keeps that name. All of the concerns about the UX remain in the nostr client and there is no additional fees for shorter names. It's a first come first serve basis.
+* This works withou any necessary web-interface or separate database. The user is never required to fill out a separate form. All they do is set up their nip-05 the way they want to, in the app of their choice. The script will record which users registered a name and ensure the user keeps that name. All of the concerns about the UX remain in the nostr client and there is no additional fees for shorter names. It's a first come first serve basis.
+
+* The script operates on an nostr.json file in-place, and maintains all of your manual modifications. However, you should make regular backups and periodically review the resulting nostr.json, just in-case there are any unforseen issues with this lightly tested script that you got for free. 🙃
 
 ## installation
 
@@ -13,24 +15,26 @@ pip install bleetube-nip05er
 
 ## configure secrets
 
-You need to source the environment variables for connecting to the nostream database. For example, you can create an `.env` environment file and then do `source .env`:
+We automatically read database connection parameters from an environment file named `.env` by default:
 
 ```bash
-export DB_HOST=/var/run/postgresql
-export DB_PORT=5432
-export DB_NAME=nostream
-export DB_USER=nostream
-export DB_PASSWORD='hunter2'
-export RELAY_DOMAIN=bitcoiner.social
-export RELAY_ADMIN=blee
+DB_HOST=/var/run/postgresql
+DB_PORT=5432
+DB_NAME=nostream
+DB_USER=nostream
+DB_PASSWORD='hunter2'
+RELAY_DOMAIN=bitcoiner.social
+NIP05ER_JSON=/var/www/html/.well-known/nostr.json
+NIP05ER_DATA=/var/cache/nip05er
+NIP05ER_LOG_PATH=/var/log/nip05er.log
 ```
+
+The last couple variables are unique to this script. The rest overlap with what you would already have configured in a docker-compose environment file.
 
 ## running
 
 ```bash
-nip05er --help
-nip05er user-search --pubkey 69a0a0910b49a1dbfbc4e4f10df22b5806af5403a228267638f2e908c968228d
-nip05er create-nip05-json
+nip05er update
 ```
 
 ## Development
@@ -44,19 +48,11 @@ python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install --editable .
-source .env
-nip05er --help
-```
-
-In case you're on Arch like myself, you'll need to `pacman -S python-psycopg2` to avoid errors about building dependencies from source.
-
-Here's hacky alias to quickly check results before copying them over:
-
-```bash
-alias up5="cat $HOME/src/nip05er/nostr.json | jq && echo 'Look good?' && read && cp -v src/nip05er/nostr.json /var/www/static/nostr.json"
+nip05er update
 ```
 
 todo:
 
-- store registered names in a simple database (flat file probably) to prevent duplicate name registrations.
-- we should also check external relays because the client isn't guaranteed to have broadcast the profile to our local relay.
+- Remove names if they no longer appear in the user's profile.
+- We should also check external relays because the client isn't guaranteed to have broadcast the profile to our local relay.
+- When checking external relays, we should use only the most recent event
