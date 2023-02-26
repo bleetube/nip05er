@@ -1,0 +1,10 @@
+[Unit]
+Description=Update nip05ers
+
+[Timer]
+# Every five minutes
+OnCalendar=*:0/5
+Unit=nip05er.service
+
+[Install]
+WantedBy=default.target

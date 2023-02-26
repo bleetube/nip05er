@@ -1,0 +1,10 @@
+[Unit]
+Description=Update nip05ers
+
+[Service]
+Type=oneshot
+User=blee
+Group=blee
+WorkingDirectory=/home/blee/docker
+#EnvironmentFile=/home/blee/docker/.env
+ExecStart=/home/blee/.local/bin/nip05er update
