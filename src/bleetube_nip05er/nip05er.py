@@ -74,15 +74,23 @@ def update(showvars = False) -> dict:
     for profile in get_all_user_profiles():
         nostr_identifier = profile.get("nip05")
         if nostr_identifier and is_valid_nip05(nostr_identifier) and nostr_identifier.lower().endswith(f"@{relay_domain}"):
-            nip05_user = nostr_identifier.split("@")[0]
-            if nip05_user in nostr_json.get('names').keys():
+            local_part = nostr_identifier.split("@")[0]
+            if local_part in nostr_json.get('names').keys():
                 logging.debug(f"Existing nip-05er: {nostr_identifier}")
                 # Namespace is claimed on a first come first-server basis.
+                # TODO: DM the user that this handle is already taken.
                 continue
+            # Check if this user already has a nip05 entry in our nostr.json
+            existing_nip05er = [ local_part for local_part in nostr_json.get('names').keys() if nostr_json.get('names').get(local_part) == profile.get('pubkey') ]
+            if existing_nip05er:
+                logging.info(f"NIP-05 username changed: {existing_nip05er[0]} -> {local_part}")
+                # Remove the old entry before we add the new one.
+                nostr_json['names'].pop(existing_nip05er[0])
             logging.warn(f"Adding new nip-05er: {nostr_identifier}")
+            # Using a flag here allows us to finish the loop and write all changes to nostr.json at once.
             update_json = True
-            nip05er = { nip05_user: profile.get('pubkey') }
-            nostr_json['names'].update(nip05er)
+            new_nip05er = { local_part: profile.get('pubkey') }
+            nostr_json['names'].update(new_nip05er)
     if update_json:
         logging.debug(f"Writing updates to {well_known_json}")
         with open(well_known_json, 'w') as file:

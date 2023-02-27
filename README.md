@@ -1,6 +1,6 @@
 # nip05er
 
-High five users by adding them to `nostr.json` which is used to validate their nip05 address if it matches `user@your.domain`.
+High five users by adding them to `nostr.json` which is used to validate their nip05 address if it matches `user@your.domain`. The term "nip05er" is an abbreviation of "nip05 user."
 
 * This works withou any necessary web-interface or separate database. The user is never required to fill out a separate form. All they do is set up their nip-05 the way they want to, in the app of their choice. The script will record which users registered a name and ensure the user keeps that name. All of the concerns about the UX remain in the nostr client and there is no additional fees for shorter names. It's a first come first serve basis.
 
