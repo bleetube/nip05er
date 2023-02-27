@@ -37,6 +37,14 @@ The last couple variables are unique to this script. The rest overlap with what 
 nip05er update
 ```
 
+## troubleshooting
+
+You can have the script dump all the environment variables:
+
+```bash
+nip05er update --showvars
+```
+
 ## Development
 
 Clone the repo and install dependencies into a local virtual environment:

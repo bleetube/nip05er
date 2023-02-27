@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bleetube-nip05er"
-version = "0.1.1"
+version = "0.1.2"
 description = "Internal devops tool for managing inventory of collectors"
 readme = "README.md"
 authors = [{ name = "blee", email = "blee@bitcoiner.social" }]
