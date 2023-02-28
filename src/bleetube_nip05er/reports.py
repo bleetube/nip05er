@@ -5,13 +5,12 @@ from sys import exit
 from pprint import pprint
 from dotenv import dotenv_values
 config = dotenv_values(f"{getcwd()}/.env")
-config = dotenv_values('/home/blee/docker/.env')
+#config = dotenv_values('/home/blee/docker/.env')
 
 relay_admin = config.get('RELAY_ADMIN', 'admin')
 nip05er_data = config.get('NIP05ER_DATA', getcwd())
 relay_domain = config.get('RELAY_DOMAIN', 'bitcoiner.social')
 relay_admin = config.get('RELAY_ADMIN', 'blee')
-well_known_json = config.get('NIP05ER_JSON', '/var/www/html/.well-known/nostr.json')
 log_file = config.get('LOG_PATH', None)
 
 
