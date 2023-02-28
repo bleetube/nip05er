@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bleetube-nip05er"
-version = "0.1.2"
+version = "0.1.3"
 description = "Internal devops tool for managing inventory of collectors"
 readme = "README.md"
 authors = [{ name = "blee", email = "blee@bitcoiner.social" }]
@@ -32,3 +32,4 @@ Homepage = "https://github.com/bleetube/nip05er"
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
 [project.scripts]
 nip05er = "bleetube_nip05er.nip05er:cli"
+1984 = "bleetube_nip05er.1984:cli"
