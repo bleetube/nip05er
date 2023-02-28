@@ -32,4 +32,4 @@ Homepage = "https://github.com/bleetube/nip05er"
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
 [project.scripts]
 nip05er = "bleetube_nip05er.nip05er:cli"
-1984 = "bleetube_nip05er.1984:cli"
+reports = "bleetube_nip05er.reports:cli"

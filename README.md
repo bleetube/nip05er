@@ -6,6 +6,10 @@ High five users by adding them to `nostr.json` which is used to validate their n
 
 * The script operates on an nostr.json file in-place, and maintains all of your manual modifications. However, you should make regular backups and periodically review the resulting nostr.json, just in-case there are any unforseen issues with this lightly tested script that you got for free. 🙃
 
+## reports
+
+Helper script to show all NIP-1984 reports on local users by local users.
+
 ## installation
 
 ```bash
@@ -57,6 +61,7 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install --editable .
 nip05er update
+reports show
 ```
 
 todo:
